@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Drink Preview — Coffee Connect</title>
+<style>
+  :root{
+    --bg:#f4efe9; --card:#fff; --accent:#b75e2f; --muted:#666;
+  }
+  body{font-family:Inter,system-ui,Segoe UI,Roboto,Helvetica,Arial; background:var(--bg); margin:0; padding:24px; color:#222;}
+  .wrap{max-width:920px;margin:0 auto;display:grid;grid-template-columns:360px 1fr;gap:20px;align-items:start;}
+  .card{background:var(--card);border-radius:12px;padding:16px;box-shadow:0 6px 18px rgba(0,0,0,0.08);}
+  .logo{height:56px;object-fit:contain}
+  h2{margin:6px 0 12px;font-size:18px}
+  .preview{display:flex;flex-direction:column;align-items:center;gap:10px;padding:18px}
+  .cup-wrap{width:220px;height:300px;display:flex;align-items:flex-end;justify-content:center;position:relative}
+  .cup{width:70%;border-radius:0 0 36px 36px; height:55%; background:linear-gradient(180deg,#fff 0%, #f7f2ee 60%); box-shadow:inset 0 -20px 30px rgba(0,0,0,0.05); position:relative; display:flex;align-items:center;justify-content:center;}
+  .cup.small{transform:scale(0.8)}
+  .cup.large{transform:scale(1.15)}
+  .saucer{width:85%;height:18px;background:linear-gradient(90deg,#eee,#ddd);border-radius:50%;position:absolute;bottom:-18px;box-shadow:0 6px 10px rgba(0,0,0,0.06)}
+  .fill{width:86%;height:46%; border-radius:20px 20px 36px 36px; background:linear-gradient(180deg,#8b5e3c,#6a3f2a); position:absolute; top:12px;}
+  .whip{position:absolute; top:-18px; width:92%; height:40px; border-radius:40px 40px 30px 30px; background:radial-gradient(circle at 30% 30%, #fff 0%, #f3f3f3 60%); box-shadow:inset 0 -6px 10px rgba(0,0,0,0.06)}
+  .label{font-weight:600; color:var(--accent)}
+  .meta{font-size:13px;color:var(--muted)}
+  .controls{display:grid;gap:8px}
+  textarea{width:100%;height:96px;padding:8px;border-radius:8px;border:1px solid #e6e6e6;font-family:monospace}
+  .row{display:flex;gap:8px}
+  .btn{background:var(--accent);color:white;border:none;padding:8px 12px;border-radius:8px;cursor:pointer}
+  .receipt{white-space:pre-wrap;font-family:monospace; font-size:14px; background:#faf7f4;padding:12px;border-radius:8px;border:1px dashed #eee}
+  .small-note{font-size:12px;color:#888;margin-top:8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card preview">
+    <img id="logo" class="logo" src="ChatGPT Image Nov 23, 2025, 12_29_33 PM.png" alt="Cafe logo (local)">
+    <h2>Cafe Coffee Day — Drink Preview</h2>
+
+    <div class="cup-wrap" aria-hidden="true">
+      <div id="cup" class="cup medium">
+        <div id="fill" class="fill"></div>
+        <div id="whip" class="whip" style="display:none"></div>
+      </div>
+      <div class="saucer"></div>
+    </div>
+
+    <div style="width:100%; text-align:center">
+      <div class="label" id="drinkLabel">—</div>
+      <div class="meta" id="metaLabel">Size • Milk • Extras</div>
+    </div>
+  </div>
+
+  <div class="card controls">
+    <h2>Controls / Test</h2>
+    <div class="small-note">Edit the JSON order below or provide query params in the URL.</div>
+    <textarea id="orderJSON">{
+  "drinkType": "cappuccino",
+  "size": "medium",
+  "milk": "oat",
+  "extras": ["whipped cream","caramel"],
+  "name": "Sandeep"
+}</textarea>
+    <div class="row">
+      <button class="btn" onclick="applyJSON()">Render</button>
+      <button class="btn" style="background:#666" onclick="resetSample()">Sample</button>
+      <button class="btn" style="background:#0a7" onclick="downloadReceipt()">Download Receipt</button>
+    </div>
+
+    <h3 style="margin-top:12px">Order Receipt</h3>
+    <div id="receipt" class="receipt">No order yet — click Render.</div>
+    <div class="small-note">Open with query string example:
+      <br><code>?drinkType=cappuccino&size=large&milk=oat&extras=whipped%20cream,caramel&name=Sandeep</code>
+    </div>
+  </div>
+</div>
+
+<script>
+const cupEl = document.getElementById('cup');
+const fillEl = document.getElementById('fill');
+const whipEl = document.getElementById('whip');
+const drinkLabel = document.getElementById('drinkLabel');
+const metaLabel = document.getElementById('metaLabel');
+const receipt = document.getElementById('receipt');
+const logo = document.getElementById('logo');
+
+// default colors for drinks (simple heuristic)
+const drinkColors = {
+  latte: ['#cfa88a','#a46a3f'],
+  cappuccino: ['#d9b79d','#8b5e3c'],
+  americano: ['#3b2b2a','#2f1f1f'],
+  espresso: ['#31180f','#1d0b06'],
+  mocha: ['#8b5a44','#4b2b1d']
+};
+
+function renderOrder(order){
+  // Normalize fields
+  const drink = order.drinkType || 'coffee';
+  const size = (order.size||'medium').toLowerCase();
+  const milk = order.milk || 'regular';
+  const extras = order.extras || [];
+  const name = order.name || 'Customer';
+
+  // Cup scale
+  cupEl.classList.remove('small','medium','large');
+  if(size === 'small') cupEl.classList.add('small');
+  else if(size === 'large') cupEl.classList.add('large');
+  else cupEl.classList.add('medium');
+
+  // Fill color by drink
+  const colors = drinkColors[drink] || ['#b97b54','#7a4d32'];
+  fillEl.style.background = `linear-gradient(180deg, ${colors[0]} 0%, ${colors[1]} 70%)`;
+
+  // Whipped cream if extras include whipped cream
+  const hasWhip = extras.map(e=>e.toLowerCase()).some(e=>e.includes('whip'));
+  whipEl.style.display = hasWhip ? 'block' : 'none';
+
+  // Label & meta
+  drinkLabel.innerText = `${capitalize(drink)} (${capitalize(size)})`;
+  metaLabel.innerText = `${capitalize(milk)} • ${extras.length ? extras.join(', ') : 'no extras'}`;
+
+  // Receipt
+  const extrasText = extras.length ? extras.join(', ') : 'no extras';
+  const receiptText = [
+    'Cafe Coffee Day — Order Receipt',
+    '-------------------------------',
+    `Name: ${name}`,
+    `Drink: ${capitalize(drink)}`,
+    `Size: ${capitalize(size)}`,
+    `Milk: ${capitalize(milk)}`,
+    `Extras: ${extrasText}`,
+    '',
+    `Preview generated at ${new Date().toLocaleString()}`
+  ].join('\n');
+  receipt.innerText = receiptText;
+}
+
+function capitalize(s){ if(!s) return s; return s.charAt(0).toUpperCase()+s.slice(1); }
+
+function applyJSON(){
+  try{
+    const obj = JSON.parse(document.getElementById('orderJSON').value);
+    renderOrder(obj);
+  }catch(e){
+    alert('Invalid JSON: '+e.message);
+  }
+}
+
+function resetSample(){
+  document.getElementById('orderJSON').value = JSON.stringify({
+    drinkType: "cappuccino",
+    size: "medium",
+    milk: "oat",
+    extras: ["whipped cream","caramel"],
+    name: "Sandeep"
+  }, null, 2);
+  applyJSON();
+}
+
+function downloadReceipt(){
+  const text = receipt.innerText;
+  const blob = new Blob([text], {type:'text/plain'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'ccdreceipt.txt'; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 500);
+}
+
+// parse query params on load
+(function(){
+  const q = new URLSearchParams(location.search);
+  if(q.has('drinkType') || q.has('size') || q.has('name')){
+    const order = {
+      drinkType: q.get('drinkType') || null,
+      size: q.get('size') || 'medium',
+      milk: q.get('milk') || 'regular',
+      extras: q.get('extras') ? q.get('extras').split(',').map(s=>decodeURIComponent(s).trim()) : [],
+      name: q.get('name') || 'Customer'
+    };
+    document.getElementById('orderJSON').value = JSON.stringify(order, null, 2);
+    renderOrder(order);
+  } else {
+    resetSample();
+  }
+})();
+</script>
+</body>
+</html>
